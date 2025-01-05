@@ -5,41 +5,6 @@
   vars:
     default_rhsm_conf_path: "files/subscription_manager/default_rhsm.conf"  # Path to the default rhsm.conf file
   tasks:
-    - name: Remove all subscriptions
-      command:
-        cmd: "subscription-manager remove --all"
-      changed_when: false
-
-    - name: Unregister the system
-      command:
-        cmd: "subscription-manager unregister"
-      changed_when: false
-
-    - name: Clean subscription manager data
-      command:
-        cmd: "subscription-manager clean"
-      changed_when: false
-
-    - name: Find katello-ca-consumer package
-      shell: "rpm -qa | grep katello-ca"
-      register: katello_package
-      changed_when: false
-
-    - name: Remove katello-ca-consumer package
-      command:
-        cmd: "rpm -e {{ item }}"
-      loop: "{{ katello_package.stdout_lines }}"
-      when: katello_package.stdout_lines | length > 0
-
-    - name: Replace rhsm.conf with default configuration and create backup
-      copy:
-        src: "{{ default_rhsm_conf_path }}"
-        dest: "/etc/rhsm/rhsm.conf"
-        owner: root
-        group: root
-        mode: '0644'
-        backup: yes  # Automatically creates a backup with a unique timestamp
-
     - name: Clean yum cache (metadata and packages)
       command:
         cmd: "yum clean all"
@@ -49,6 +14,52 @@
       file:
         path: "/var/cache/yum"
         state: absent
+
+    - name: Check if the system is registered
+      command:
+        cmd: "subscription-manager identity"
+      register: subscription_status
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Remove all subscriptions (if registered)
+      command:
+        cmd: "subscription-manager remove --all"
+      when: subscription_status.rc == 0
+      changed_when: false
+
+    - name: Unregister the system (if registered)
+      command:
+        cmd: "subscription-manager unregister"
+      when: subscription_status.rc == 0
+      changed_when: false
+
+    - name: Clean subscription manager data (if registered)
+      command:
+        cmd: "subscription-manager clean"
+      when: subscription_status.rc == 0
+      changed_when: false
+
+    - name: Find katello-ca-consumer package
+      shell: "rpm -qa | grep katello-ca"
+      register: katello_package
+      ignore_errors: yes  # Ignore errors if the command fails
+      changed_when: false
+
+    - name: Remove katello-ca-consumer package (if installed)
+      command:
+        cmd: "rpm -e {{ item }}"
+      loop: "{{ katello_package.stdout_lines }}"
+      when: katello_package.stdout_lines | length > 0  # Only run if packages are found
+
+    - name: Replace rhsm.conf with default configuration and create backup
+      copy:
+        src: "{{ default_rhsm_conf_path }}"
+        dest: "/etc/rhsm/rhsm.conf"
+        owner: root
+        group: root
+        mode: '0644'
+        backup: yes  # Automatically creates a backup with a unique timestamp
 
     - name: Prompt admin to remove the host from Satellite WebUI
       pause:
