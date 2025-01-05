@@ -1,0 +1,66 @@
+---
+- name: Unregister RHEL system from Red Hat Satellite
+  hosts: all
+  become: yes
+  vars:
+    default_rhsm_conf_path: "files/subscription_manager/default_rhsm.conf"  # Path to the default rhsm.conf file
+  tasks:
+    - name: Remove all subscriptions
+      command:
+        cmd: "subscription-manager remove --all"
+      changed_when: false
+
+    - name: Unregister the system
+      command:
+        cmd: "subscription-manager unregister"
+      changed_when: false
+
+    - name: Clean subscription manager data
+      command:
+        cmd: "subscription-manager clean"
+      changed_when: false
+
+    - name: Find katello-ca-consumer package
+      shell: "rpm -qa | grep katello-ca"
+      register: katello_package
+      changed_when: false
+
+    - name: Remove katello-ca-consumer package
+      command:
+        cmd: "rpm -e {{ item }}"
+      loop: "{{ katello_package.stdout_lines }}"
+      when: katello_package.stdout_lines | length > 0
+
+    - name: Replace rhsm.conf with default configuration and create backup
+      copy:
+        src: "{{ default_rhsm_conf_path }}"
+        dest: "/etc/rhsm/rhsm.conf"
+        owner: root
+        group: root
+        mode: '0644'
+        backup: yes  # Automatically creates a backup with a unique timestamp
+
+    - name: Clean yum cache (metadata and packages)
+      command:
+        cmd: "yum clean all"
+      changed_when: false
+
+    - name: Remove yum cache files (force cleanup)
+      file:
+        path: "/var/cache/yum"
+        state: absent
+
+    - name: Prompt admin to remove the host from Satellite WebUI
+      pause:
+        prompt: |
+          Please remove the host from the Red Hat Satellite WebUI:
+          1. Go to Satellite WebUI -> Hosts -> Content Hosts.
+          2. Click on the hostname.
+          3. For Satellite 6.11+:
+             - Click on the 3 dots in the top right.
+             - Select "Legacy Content Host UI".
+             - Click "Un-register Host" from the top left.
+             - Select an option to unregister.
+          4. For older versions:
+             - Click "Unregister the host".
+          Press Enter to continue.
