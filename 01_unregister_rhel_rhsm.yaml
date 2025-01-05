@@ -1,6 +1,6 @@
 ---
 - name: Unregister RHEL system from Red Hat Satellite
-  hosts: all
+  hosts: "host_list"
   become: yes
   vars:
     default_rhsm_conf_path: "files/subscription_manager/default_rhsm.conf"  # Path to the default rhsm.conf file
